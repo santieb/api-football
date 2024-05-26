@@ -1,19 +1,76 @@
-<html lang='en'>
-
-  <head>
-    <meta charset='UTF-8' />
-    <meta http-equiv='X-UA-Compatible' content='IE=edge' />
-    <meta name='viewport' content='width=device-width, initial-scale=1.0' />
-    <link rel='stylesheet' href='/style.css' />
-    <title>Home</title>
-  </head>
-
-  <body>
-    <div class='container'>
-      <a href='/'><button>Home</button></a>
-      <a href='/about'><button>About</button></a>
-    </div>
-    <h1>This Is <span><%= title %></span></h1>
-  </body>
-
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Historical Football Matches</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f9f9f9;
+            margin: 0;
+            padding: 0;
+        }
+        h1 {
+            text-align: center;
+            padding: 20px;
+            background-color: #4CAF50;
+            color: white;
+            margin: 0;
+        }
+        table {
+            width: 80%;
+            margin: 20px auto;
+            border-collapse: collapse;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            background-color: white;
+        }
+        th, td {
+            padding: 12px;
+            text-align: center;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <h1>Historical Football Matches</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Home Team</th>
+                <th>Away Team</th>
+                <th>Home Score</th>
+                <th>Away Score</th>
+                <th>Tournament</th>
+                <th>City</th>
+                <th>Country</th>
+                <th>Neutral</th>
+            </tr>
+        </thead>
+        <tbody>
+            <% matches.forEach(function(match) { %>
+                <tr>
+                    <td><%= match.date %></td>
+                    <td><%= match.home_team %></td>
+                    <td><%= match.away_team %></td>
+                    <td><%= match.home_score %></td>
+                    <td><%= match.away_score %></td>
+                    <td><%= match.tournament %></td>
+                    <td><%= match.city %></td>
+                    <td><%= match.country %></td>
+                    <td><%= match.neutral %></td>
+                </tr>
+            <% }); %>
+        </tbody>
+    </table>
+</body>
 </html>
