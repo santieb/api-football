@@ -6,13 +6,11 @@ const { PORT } = config
 
 const app = ExpressConfig()
 
-try {
-  dbConnect();
-  console.log('🗂️  Database connected successfully');
-} catch (err) {
-  console.error(err);
-}
-
+const connection = dbConnect();
+app.use((req, res, next) => {
+  req.dbConnection = connection
+  next()
+})
 app.use('/api', routes)
 
 app.listen(PORT, () => {

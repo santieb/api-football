@@ -3,6 +3,6 @@ import controllers from './controllers.js'
 const router = Router()
 
 router
-  .get('/', controllers.helloWorld)
+  .get('/', controllers.getFootballMatches)
 
 export default router

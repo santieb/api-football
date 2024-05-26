@@ -10,7 +10,16 @@ const dbConnect = () => {
     database : DB_DATABASE
   });
 
-  connection.connect();
-}
+  connection.connect((err) => {
+    if (err) {
+      console.error('Error connecting to the database:', err);
+      throw err;
+    }
 
-export default dbConnect
+    console.log('🗂️  Database connected successfully!');
+  });
+
+  return connection;
+};
+
+export default dbConnect;
