@@ -11,7 +11,7 @@ app.use((req, res, next) => {
   req.dbConnection = connection
   next()
 })
-app.use('/api', routes)
+app.use('/', routes)
 
 app.listen(PORT, () => {
   console.log(`listening on port ${PORT}`)
