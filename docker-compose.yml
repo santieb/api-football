@@ -19,6 +19,7 @@ services:
       options:
         awslogs-region: ${AWS_REGION}
         awslogs-group: /aws/cloudformation/${LOG_GROUP_NAME}
+        awslogs-stream: api
 
   nginx:
     build:
@@ -34,6 +35,7 @@ services:
       options:
         awslogs-region: ${AWS_REGION}
         awslogs-group: /aws/cloudformation/${LOG_GROUP_NAME}
+        awslogs-stream: nginx
 
 networks:
   app-network:
