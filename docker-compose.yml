@@ -6,8 +6,15 @@ services:
     container_name: api
     ports:
       - "3000:3000"
-    networks:
-      - app-network
+    environment:
+      - AWS_REGION=${AWS_REGION}
+      - LOG_GROUP_NAME=${LOG_GROUP_NAME}
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION}
+        awslogs-group: /aws/cloudformation/${LOG_GROUP_NAME}
+        awslogs-stream-prefix: api
 
   nginx:
     build:
@@ -17,8 +24,15 @@ services:
       - "80:80"
     depends_on:
       - api
-    networks:
-      - app-network
+    environment:
+      - AWS_REGION=${AWS_REGION}
+      - LOG_GROUP_NAME=${LOG_GROUP_NAME}
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION}
+        awslogs-group: /aws/cloudformation/${LOG_GROUP_NAME}
+        awslogs-stream-prefix: nginx
 
 networks:
   app-network:
