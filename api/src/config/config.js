@@ -6,7 +6,7 @@ dotenv.config()
 
 export const __dirname = dirname(fileURLToPath(import.meta.url));
 export default {
-  PORT: process.env.PORT,
+  PORT: process.env.API_PORT,
   DB_HOST: process.env.DB_HOST,
   DB_PASSWORD: process.env.DB_PASSWORD,
   DB_DATABASE: process.env.DB_DATABASE,
