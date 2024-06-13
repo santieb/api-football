@@ -9,12 +9,17 @@ services:
     environment:
       - AWS_REGION=${AWS_REGION}
       - LOG_GROUP_NAME=${LOG_GROUP_NAME}
+      - API_PORT=${API_PORT}
+      - DB_HOST=${DB_HOST}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_DATABASE=${DB_DATABASE}
+      - DB_USER=${DB_USER}
     logging:
       driver: awslogs
       options:
         awslogs-region: ${AWS_REGION}
         awslogs-group: /aws/cloudformation/${LOG_GROUP_NAME}
-        awslogs-stream-prefix: api
+        awslogs-stream: api
 
   nginx:
     build:
@@ -22,8 +27,6 @@ services:
     container_name: nginx
     ports:
       - "80:80"
-    depends_on:
-      - api
     environment:
       - AWS_REGION=${AWS_REGION}
       - LOG_GROUP_NAME=${LOG_GROUP_NAME}
@@ -32,7 +35,7 @@ services:
       options:
         awslogs-region: ${AWS_REGION}
         awslogs-group: /aws/cloudformation/${LOG_GROUP_NAME}
-        awslogs-stream-prefix: nginx
+        awslogs-stream: nginx
 
 networks:
   app-network:
