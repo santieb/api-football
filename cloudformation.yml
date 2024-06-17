@@ -1,0 +1,764 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: 'test'
+# EN PARAM,ETERS TAGEAR EN CLOUDFORMATION CON PARAMETER JSON. SI ESTA DESPLEGADO USAR TAG EDITOR
+Parameters:
+  EnvironmentType:
+    Description: 'Specify the Environment type of the stack.'
+    Type: String
+    Default: Dev
+    AllowedValues:
+      - Dev
+      - Prod
+    ConstraintDescription: 'Specify either Dev or Prod.'
+
+  AmiID:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Description: 'The ID of the AMI.'
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+
+  SSHLocation:
+    Description: The IP address range that can be used to SSH to the EC2 instances
+    Type: String
+    Default: 0.0.0.0/0
+    MinLength: 9
+    MaxLength: 18
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instances
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+
+  VPCId:
+    Description: VPC to create the security group and EC2 instance into
+    Type: AWS::EC2::VPC::Id
+    Default: 'vpc-07a851eb7ed05086f'
+
+  SubnetId1:
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-0e92ddf1b65f3413c
+    Description: 'First public subnet ID to be used on resources.'
+  SubnetId2:
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-0ab13a6615aa6a6a1
+    Description: 'Second public subnet ID to be used on resources.'
+
+  SNSSub:
+    Type: String
+    Default: sample@gmail.com
+    Description: 'sns subcriptor (email)'
+
+  OwnerEmail:
+    Type: String
+    Default: sample@gmail.com
+    Description: 'The email of the owner for tagging resources'
+
+Mappings:
+  EnvironmentToInstanceType:
+    Dev:
+      InstanceType: t2.micro
+      DBInstanceType: db.t3.micro
+    Prod:
+      InstanceType: t2.micro
+      DBInstanceType: db.t3.micro
+
+Resources:
+  #EC2
+  EC2InstanceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 'ec2.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: 'EC2SecretsManagerAccess'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'secretsmanager:GetSecretValue'
+                Resource: !Ref RDSSecrets
+        - PolicyName: 'EC2CloudWatchLogsAccess'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 'logs:GetLogEvents'
+                Resource: !GetAtt LogGroup.Arn
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  EC2InstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Roles:
+        - !Ref EC2InstanceRole
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !FindInMap [EnvironmentToInstanceType, !Ref EnvironmentType, InstanceType]
+      ImageId: !Ref AmiID
+      AvailabilityZone: !Sub ${AWS::Region}a
+      KeyName: !Ref KeyName
+      SubnetId: !Ref SubnetId1
+      SecurityGroupIds:
+         - !Ref EC2SecurityGroup
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+
+          sudo yum update -y
+          sudo amazon-linux-extras install docker -y
+          sudo service docker start
+          sudo usermod -a -G docker ec2-user
+          sudo yum install nc
+
+          sudo yum install git -y
+          sudo yum install -y jq
+
+          # Clonar el repositorio en /home/ec2-user
+          git clone https://github.com/santieb/api-football.git /home/ec2-user/api-football
+
+          SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id ${RDSSecrets} --region ${AWS::Region} --query SecretString --output text)
+
+          DB_HOST=$(echo $SECRET_JSON | jq -r '.host')
+          DB_PASSWORD=$(echo $SECRET_JSON | jq -r '.password')
+          DB_DATABASE=$(echo $SECRET_JSON | jq -r '.dbInstanceIdentifier')
+          DB_USER=$(echo $SECRET_JSON | jq -r '.username')
+          DB_PORT=$(echo $SECRET_JSON | jq -r '.port')
+
+          cat <<EOF | sudo tee /home/ec2-user/api-football/.env >/dev/null
+          AWS_REGION=${AWS::Region}
+          LOG_GROUP_NAME=${AWS::StackName}
+          API_PORT=3000
+          DB_HOST=$DB_HOST
+          DB_PASSWORD=$DB_PASSWORD
+          DB_DATABASE=app
+          DB_USER=$DB_USER
+          EOF
+
+          sudo curl -L "https://github.com/docker/compose/releases/download/v2.18.1/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          cd /home/ec2-user/api-football
+          docker-compose up --build -d
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'Security group for EC2'
+      VpcId: !Ref VPCId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref SSHLocation
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  # RDS
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: 5
+      DBInstanceClass: !FindInMap [EnvironmentToInstanceType, !Ref EnvironmentType, DBInstanceType]
+      Engine: mysql
+      MasterUsername: !Join ['', ['{{resolve:secretsmanager:', !Ref RDSSecrets, ':SecretString:username}}' ]]
+      MasterUserPassword: !Join ['', ['{{resolve:secretsmanager:', !Ref RDSSecrets, ':SecretString:password}}' ]]
+      BackupRetentionPeriod: 0
+      DBInstanceIdentifier: 'rds-instance-sbarreto'
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      DBSubnetGroupName: !Ref 'MyDBSubnetGroup'
+      MultiAZ: false
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  RDSSecrets:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: 'This is the secret for my RDS instance'
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "admin"}'
+        GenerateStringKey: 'password'
+        PasswordLength: 16
+        ExcludeCharacters: '()@\/"'
+        ExcludePunctuation: true
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  RDSSecretAttachment:
+    Type: AWS::SecretsManager::SecretTargetAttachment
+    Properties:
+      SecretId: !Ref RDSSecrets
+      TargetId: !Ref DBInstance
+      TargetType: AWS::RDS::DBInstance
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'Security group for RDS'
+      VpcId: !Ref VPCId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !GetAtt EC2SecurityGroup.GroupId
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !GetAtt LambdaSecurityGroup.GroupId
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  MyDBSubnetGroup:
+    Type: 'AWS::RDS::DBSubnetGroup'
+    Properties:
+      DBSubnetGroupDescription: 'Subnet Group for RDS DB Instance'
+      SubnetIds:
+        - !Ref 'SubnetId1'
+        - !Ref 'SubnetId2'
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+## Load Balancer
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      LoadBalancerAttributes:
+        - Key: deletion_protection.enabled
+          Value: "false"
+      Scheme: internet-facing
+      SecurityGroups: 
+        - !GetAtt LoadBalancerSegurityGroup.GroupId
+      Subnets:
+        - !Ref 'SubnetId1'
+        - !Ref 'SubnetId2'
+      Type: application
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  LoadBalancerSegurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Segurity group load balancer
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow from anyone on port 80
+          FromPort: 80
+          IpProtocol: tcp
+          ToPort: 80
+        - CidrIp: 0.0.0.0/0
+          Description: Allow from anyone on port 443
+          FromPort: 443
+          ToPort: 443
+          IpProtocol: 'tcp'
+      VpcId: !Ref VPCId
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  LoadBalancerTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 6
+      HealthCheckPath: '/'
+      HealthCheckProtocol: 'HTTP' 
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: 200,202,301,302,303,400,404
+      Port: 80
+      Protocol: HTTP
+      TargetGroupAttributes:
+        - Key: stickiness.enabled
+          Value: "false"
+      TargetType: instance
+      VpcId: !Ref VPCId
+      Targets:
+        - Id: !Ref EC2Instance
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  LoadBalancerPublicRedirectListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref LoadBalancerTargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  LoadbalancerSegurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: Load balancer to target
+      FromPort: 80
+      GroupId: !GetAtt EC2SecurityGroup.GroupId
+      SourceSecurityGroupId: !GetAtt LoadBalancerSegurityGroup.GroupId
+      ToPort: 80
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  LoadBalancerGroupEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !GetAtt LoadBalancerSegurityGroup.GroupId
+      IpProtocol: tcp
+      Description: Load balancer to target
+      DestinationSecurityGroupId: !GetAtt EC2SecurityGroup.GroupId
+      FromPort: 80
+      ToPort: 80
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Lambda function
+      VpcId: !Ref VPCId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  MyLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Layers:
+        - arn:aws:lambda:us-east-1:844045035952:layer:pandas-layer:1
+        - arn:aws:lambda:us-east-1:844045035952:layer:sqlalchemy-layer:1
+      VpcConfig:
+        SecurityGroupIds: [!GetAtt LambdaSecurityGroup.GroupId]
+        SubnetIds:
+          - subnet-08eb2b97e92ff5f21
+      LoggingConfig: 
+        ApplicationLogLevel: INFO
+        LogFormat: JSON
+        LogGroup: !Sub "/aws/cloudformation/${AWS::StackName}"
+        SystemLogLevel: INFO
+      Environment:
+        Variables:
+          SECRET_MANAGER_ARN: !Ref RDSSecrets
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: python3.8
+      MemorySize: 256
+      Timeout: 15
+      Code:
+        ZipFile: |
+          import pymysql
+          from sqlalchemy import create_engine, Table, Column, Integer, String, Date, Boolean, MetaData
+          import pandas as pd
+          import json
+          import boto3
+          import io
+          import os
+
+          DB_NAME = 'app'
+          SECRET_MANAGER_ARN = os.environ['SECRET_MANAGER_ARN']
+
+          secrets_manager = boto3.client('secretsmanager')
+          s3_client = boto3.client('s3')
+
+          def lambda_handler(event, context):
+              try:
+                  print('Fetching secrets from Secrets Manager...')
+                  secret_response = secrets_manager.get_secret_value(SecretId=SECRET_MANAGER_ARN)
+                  secret_dict = json.loads(secret_response['SecretString'])
+
+                  if not (secret_dict.get('username') and secret_dict.get('password') and secret_dict.get('host')):
+                      raise ValueError("Failed to retrieve database credentials from Secrets Manager.")
+
+                  print('Creating database if not exists...')
+                  create_database_if_not_exists(secret_dict)
+                  print('Database created if not exists.')
+
+                  print('Creating SQLAlchemy engine...')
+                  engine = create_engine(
+                      f'mysql+pymysql://{secret_dict["username"]}:{secret_dict["password"]}@{secret_dict["host"]}/{DB_NAME}'
+                  )
+
+                  metadata = MetaData()
+                  football_matches = Table('football_matches', metadata,
+                      Column('id', Integer, primary_key=True),
+                      Column('match_date', Date, nullable=False),
+                      Column('home_team', String(255), nullable=False),
+                      Column('away_team', String(255), nullable=False),
+                      Column('home_score', Integer, nullable=False),
+                      Column('away_score', Integer, nullable=False),
+                      Column('tournament', String(255), nullable=False),
+                      Column('city', String(255), nullable=False),
+                      Column('country', String(255), nullable=False),
+                      Column('neutral', Boolean, nullable=False)
+                  )
+
+                  metadata.create_all(engine)
+
+                  print('Fetching CSV from S3...')
+                  csv_bucket = event['Records'][0]['s3']['bucket']['name']
+                  csv_key = event['Records'][0]['s3']['object']['key']
+                  
+                  response = s3_client.get_object(Bucket=csv_bucket, Key=csv_key)
+                  csv_content = response['Body'].read()
+
+                  print('Reading data from CSV...')
+                  df = pd.read_csv(io.BytesIO(csv_content))
+                  print('Data read successfully.')
+
+                  print('Inserting data into the database...')
+                  df.to_sql(name='football_matches', con=engine, if_exists='replace', index=False)
+                  print('Data inserted successfully.')
+
+                  return {
+                      'statusCode': 200,
+                      'body': json.dumps('Data inserted successfully!')
+                  }
+              except Exception as e:
+                  print(f'Error: {str(e)}')
+                  return {
+                      'statusCode': 500,
+                      'body': json.dumps(f'Error: {str(e)}')
+                  }
+
+          def create_database_if_not_exists(secret_dict):
+              connection = pymysql.connect(
+                  host=secret_dict["host"],
+                  user=secret_dict["username"],
+                  password=secret_dict["password"]
+              )
+              try:
+                  with connection.cursor() as cursor:
+                      cursor.execute(f"CREATE DATABASE IF NOT EXISTS {DB_NAME}")
+              finally:
+                  connection.close()
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  MyBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+#    Properties:
+#      NotificationConfiguration:
+#          LambdaConfigurations:
+#            - Event: s3:ObjectCreated:Put
+#              Function: !GetAtt MyLambdaFunction.Arn
+
+  LambdaS3Permission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt MyLambdaFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref 'AWS::AccountId'
+      SourceArn: !GetAtt MyBucket.Arn
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3ReadAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub "arn:aws:s3:::${MyBucket}/*"
+        - PolicyName: RDSWriteAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - rds:*
+                Resource: !Sub "arn:aws:rds:${AWS::Region}:${AWS::AccountId}:db:${DBInstance}"
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                Resource: !Ref RDSSecrets
+        - PolicyName: LambdaExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+                - lambda:*
+                - ec2:CreateNetworkInterface
+                - ec2:DescribeNetworkInterfaces
+                - ec2:DeleteNetworkInterface
+                - ec2:AttachNetworkInterface
+                - ec2:DetachNetworkInterface
+                - ec2:ModifyNetworkInterfaceAttribute
+                - ec2:ResetNetworkInterfaceAttribute
+                - ec2:AssignPrivateIpAddresses
+                - ec2:UnassignPrivateIpAddresses
+                - ec2:DescribeNetworkInterfacePermissions
+                - ec2:CreateNetworkInterfacePermission
+                - ec2:DeleteNetworkInterfacePermission
+              Resource: '*'
+        - PolicyName: LambdaLogsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/cloudformation/${AWS::StackName}:*"
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  LogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: !Sub "/aws/cloudformation/${AWS::StackName}" 
+      RetentionInDays: 30
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  # Alarms
+  SNSAlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Endpoint: !Ref SNSSub
+          Protocol: email
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  EC2CPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "CPU Alert"
+      AlarmActions:
+        - !Ref SNSAlertTopic
+      Namespace: AWS/EC2
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref EC2Instance
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 90
+      ComparisonOperator: GreaterThanThreshold 
+      TreatMissingData: notBreaching
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  EC2MemoryAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Memory Alert"
+      AlarmActions:
+        - !Ref SNSAlertTopic
+      Namespace: System/Linux
+      MetricName: MemoryUtilization
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref EC2Instance
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 90
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  EC2DiskSpaceAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Disk space Alert"
+      AlarmActions:
+        - !Ref SNSAlertTopic
+      Namespace: System/Linux
+      MetricName: DiskSpaceUtilization
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref EC2Instance
+      Statistic: Minimum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: LessThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  RDSAlarmCPU:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "CPU Alert"
+      AlarmActions:
+        - !Ref SNSAlertTopic
+      Namespace: AWS/RDS
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: DBInstanceIdentifier
+          Value: !Ref DBInstance
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 90
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  RDSAlarmMemory:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Memory Alert"
+      AlarmActions:
+        - !Ref SNSAlertTopic
+      Namespace: AWS/RDS
+      MetricName: FreeableMemory
+      Dimensions:
+        - Name: DBInstanceIdentifier
+          Value: !Ref DBInstance
+      Statistic: Average 
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 90
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: notBreaching
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  LBErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "5XX errors Alarm"
+      AlarmActions:
+        - !Ref SNSAlertTopic
+      Namespace: AWS/ELB
+      MetricName: HTTPCode_5XX
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !GetAtt LoadBalancer.LoadBalancerFullName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Network Configuration"
+        Parameters:
+          - VPCId
+          - SubnetId1
+          - SubnetId2
+      - Label:
+          default: "Compute Configuration"
+        Parameters:
+          - AmiID
+          - KeyName
+      - Label:
+          default: "Security Configuration"
+        Parameters:
+          - SSHLocation
+      - Label:
+          default: "Environment Configuration"
+        Parameters:
+          - EnvironmentType
+      - Label:
+          default: "Tags Configuration"
+        Parameters:
+          - OwnerEmail
+
+Outputs:
+  LoadBalancer:
+    Description: The DNS name of LoadBalancer
+    Value: !GetAtt DNSName
+  InstanceID:
+    Description: The Instance ID
+    Value: !Ref EC2Instance
+  StackVPC:
+    Description: The ID of the VPC
+    Value: !Ref VPCId
+    Export:
+      Name: !Sub "${AWS::StackName}-VPCID"
+  DBInstanceEndpoint:
+    Description: 'The RDS instance'
+    Value: !GetAtt 'DBInstance.Endpoint.Address'
