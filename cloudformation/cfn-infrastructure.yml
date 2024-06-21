@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: 'test'
-# EN PARAM,ETERS TAGEAR EN CLOUDFORMATION CON PARAMETER JSON. SI ESTA DESPLEGADO USAR TAG EDITOR
+
 Parameters:
   EnvironmentType:
     Description: 'Specify the Environment type of the stack.'
@@ -104,9 +104,6 @@ Resources:
     Properties:
       Roles:
         - !Ref EC2InstanceRole
-      Tags:
-        - Key: owner
-          Value: !Ref OwnerEmail
 
   EC2Instance:
     Type: AWS::EC2::Instance
@@ -120,22 +117,22 @@ Resources:
          - !Ref EC2SecurityGroup
       IamInstanceProfile: !Ref EC2InstanceProfile
       UserData:
-        Fn::Base64: |
+        Fn::Base64: !Sub |
           #!/bin/bash
 
           sudo yum update -y
           sudo amazon-linux-extras install docker -y
           sudo service docker start
           sudo usermod -a -G docker ec2-user
-          sudo yum install nc
+          sudo yum install nc -y
 
           sudo yum install git -y
-          sudo yum install -y jq
+          sudo yum install jq -y
 
-          # Clonar el repositorio en /home/ec2-user
           git clone https://github.com/santieb/api-football.git /home/ec2-user/api-football
 
           SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id ${RDSSecrets} --region ${AWS::Region} --query SecretString --output text)
+          echo "Secret JSON: $SECRET_JSON"
 
           DB_HOST=$(echo $SECRET_JSON | jq -r '.host')
           DB_PASSWORD=$(echo $SECRET_JSON | jq -r '.password')
@@ -153,8 +150,9 @@ Resources:
           DB_USER=$DB_USER
           EOF
 
-          sudo curl -L "https://github.com/docker/compose/releases/download/v2.18.1/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
           sudo chmod +x /usr/local/bin/docker-compose
+
           cd /home/ec2-user/api-football
           docker-compose up --build -d
       Tags:
@@ -214,9 +212,6 @@ Resources:
       SecretId: !Ref RDSSecrets
       TargetId: !Ref DBInstance
       TargetType: AWS::RDS::DBInstance
-      Tags:
-        - Key: owner
-          Value: !Ref OwnerEmail
 
   RDSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -318,9 +313,6 @@ Resources:
       LoadBalancerArn: !Ref LoadBalancer
       Port: 80
       Protocol: HTTP
-      Tags:
-        - Key: owner
-          Value: !Ref OwnerEmail
 
   LoadbalancerSegurityGroupIngress:
     Type: AWS::EC2::SecurityGroupIngress
@@ -331,9 +323,6 @@ Resources:
       GroupId: !GetAtt EC2SecurityGroup.GroupId
       SourceSecurityGroupId: !GetAtt LoadBalancerSegurityGroup.GroupId
       ToPort: 80
-      Tags:
-        - Key: owner
-          Value: !Ref OwnerEmail
 
   LoadBalancerGroupEgress:
     Type: AWS::EC2::SecurityGroupEgress
@@ -344,9 +333,6 @@ Resources:
       DestinationSecurityGroupId: !GetAtt EC2SecurityGroup.GroupId
       FromPort: 80
       ToPort: 80
-      Tags:
-        - Key: owner
-          Value: !Ref OwnerEmail
 
   LambdaSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -487,11 +473,10 @@ Resources:
       Tags:
         - Key: owner
           Value: !Ref OwnerEmail
-#    Properties:
-#      NotificationConfiguration:
-#          LambdaConfigurations:
-#            - Event: s3:ObjectCreated:Put
-#              Function: !GetAtt MyLambdaFunction.Arn
+      #NotificationConfiguration:
+      #    LambdaConfigurations:
+      #      - Event: s3:ObjectCreated:Put
+      #        Function: !GetAtt MyLambdaFunction.Arn
 
   LambdaS3Permission:
     Type: AWS::Lambda::Permission
@@ -501,9 +486,6 @@ Resources:
       Principal: s3.amazonaws.com
       SourceAccount: !Ref 'AWS::AccountId'
       SourceArn: !GetAtt MyBucket.Arn
-      Tags:
-        - Key: owner
-          Value: !Ref OwnerEmail
 
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -611,9 +593,6 @@ Resources:
       Threshold: 90
       ComparisonOperator: GreaterThanThreshold 
       TreatMissingData: notBreaching
-      Tags:
-        - Key: owner
-          Value: !Ref OwnerEmail
 
   EC2MemoryAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -632,9 +611,6 @@ Resources:
       Threshold: 90
       ComparisonOperator: GreaterThanThreshold
       TreatMissingData: notBreaching
-      Tags:
-        - Key: owner
-          Value: !Ref OwnerEmail
 
   EC2DiskSpaceAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -653,9 +629,6 @@ Resources:
       Threshold: 10
       ComparisonOperator: LessThanOrEqualToThreshold
       TreatMissingData: notBreaching
-      Tags:
-        - Key: owner
-          Value: !Ref OwnerEmail
 
   RDSAlarmCPU:
     Type: AWS::CloudWatch::Alarm
@@ -674,9 +647,6 @@ Resources:
       Threshold: 90
       ComparisonOperator: GreaterThanThreshold
       TreatMissingData: notBreaching
-      Tags:
-        - Key: owner
-          Value: !Ref OwnerEmail
 
   RDSAlarmMemory:
     Type: AWS::CloudWatch::Alarm
@@ -695,9 +665,6 @@ Resources:
       Threshold: 90
       ComparisonOperator: LessThanThreshold
       TreatMissingData: notBreaching
-      Tags:
-        - Key: owner
-          Value: !Ref OwnerEmail
 
   LBErrorsAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -716,9 +683,6 @@ Resources:
       Threshold: 10
       ComparisonOperator: GreaterThanThreshold
       TreatMissingData: missing
-      Tags:
-        - Key: owner
-          Value: !Ref OwnerEmail
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -750,7 +714,7 @@ Metadata:
 Outputs:
   LoadBalancer:
     Description: The DNS name of LoadBalancer
-    Value: !GetAtt DNSName
+    Value: !GetAtt LoadBalancer.DNSName
   InstanceID:
     Description: The Instance ID
     Value: !Ref EC2Instance
