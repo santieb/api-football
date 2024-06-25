@@ -10,27 +10,27 @@
     <div class="flex flex-wrap justify-center">
         <div class="bg-gray-700 shadow-lg rounded-xl p-10 m-4">
             <h2 class="text-lg font-bold mb-4">Total Wins</h2>
-            <p class="text-3xl font-bold"><%= counters.WIN %></p>
+            <p class="text-3xl font-bold"><%= counters.win %></p>
         </div>
         <div class="bg-gray-700 shadow-lg rounded-xl p-10 m-4">
             <h2 class="text-lg font-bold mb-4">Total Losses</h2>
-            <p class="text-3xl font-bold"><%= counters.LOSE %></p>
+            <p class="text-3xl font-bold"><%= counters.lose %></p>
         </div>
         <div class="bg-gray-700 shadow-lg rounded-xl p-10 m-4">
             <h2 class="text-lg font-bold mb-4">Total Draws</h2>
-            <p class="text-3xl font-bold"><%= counters.DRAW %></p>
+            <p class="text-3xl font-bold"><%= counters.draw %></p>
         </div>
         <div class="bg-gray-700 shadow-lg rounded-xl p-10 m-4">
             <h2 class="text-lg font-bold mb-4">Win Rate</h2>
-            <p class="text-3xl font-bold"><%= ((counters.WIN / (counters.WIN + counters.LOSE + counters.DRAW)) * 100).toFixed(2) %>%</p>
+            <p class="text-3xl font-bold"><%= ((counters.win / (counters.win + counters.lose + counters.draw)) * 100).toFixed(2) %>%</p>
         </div>
         <div class="bg-gray-700 shadow-lg rounded-xl p-10 m-4">
             <h2 class="text-lg font-bold mb-4">Lose Rate</h2>
-            <p class="text-3xl font-bold"><%= ((counters.LOSE / (counters.WIN + counters.LOSE + counters.DRAW)) * 100).toFixed(2) %>%</p>
+            <p class="text-3xl font-bold"><%= ((counters.lose / (counters.win + counters.lose + counters.draw)) * 100).toFixed(2) %>%</p>
         </div>
         <div class="bg-gray-700 shadow-lg rounded-xl p-10 m-4">
             <h2 class="text-lg font-bold mb-4">Draw Rate</h2>
-            <p class="text-3xl font-bold"><%= ((counters.DRAW / (counters.WIN + counters.LOSE + counters.DRAW)) * 100).toFixed(2) %>%</p>
+            <p class="text-3xl font-bold"><%= ((counters.draw / (counters.win + counters.lose + counters.draw)) * 100).toFixed(2) %>%</p>
         </div>
     </div>
 
