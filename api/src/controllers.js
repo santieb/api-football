@@ -55,7 +55,7 @@ const controllers = {
       }
 
       const { lastMatchesWithResult, counters } = getFootballMatches(matches, country)
-      console.log(lastMatchesWithResult, counters)
+
       res.render("Home", { matches: lastMatchesWithResult, counters })
     });
   },
