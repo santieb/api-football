@@ -107,6 +107,14 @@ Resources:
                 Resource:
                   - arn:aws:s3:::artifacts-bucket-sbarreto
                   - arn:aws:s3:::artifacts-bucket-sbarreto/*
+        - PolicyName: EC2CodeployAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                - 'codedeploy:*'
+                Resource: "*"
 
       Tags:
         - Key: owner
