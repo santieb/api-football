@@ -95,6 +95,19 @@ Resources:
                   - 'logs:PutLogEvents'
                   - 'logs:GetLogEvents'
                 Resource: !GetAtt LogGroup.Arn
+      # s3 exists in cfn-pipeline-sbarreto
+        - PolicyName: 'EC2S3Access'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - arn:aws:s3:::artifacts-bucket-sbarreto
+                  - arn:aws:s3:::artifacts-bucket-sbarreto/*
+
       Tags:
         - Key: owner
           Value: !Ref OwnerEmail
@@ -121,6 +134,15 @@ Resources:
           #!/bin/bash
 
           sudo yum update -y
+          
+          # codeploy agent
+          sudo yum install ruby -y
+          sudo yum install wget
+          wget https://aws-codedeploy-eu-west-1.s3.eu-west-1.amazonaws.com/latest/install
+          chmod +x ./install
+          sudo chmod +x ./install
+          sudo ./install auto  
+
           sudo amazon-linux-extras install docker -y
           sudo service docker start
           sudo usermod -a -G docker ec2-user
@@ -469,7 +491,7 @@ Resources:
 
   MyBucket:
     Type: AWS::S3::Bucket
-    DependsOn: !Ref MyLambdaFunction
+    #DependsOn: !Ref MyLambdaFunction
     Properties:
       Tags:
         - Key: owner
@@ -825,6 +847,21 @@ Metadata:
           - OwnerEmail
 
 Outputs:
+  LoadBalancerDNSName:
+    Description: DNS del Load Balancer
+    Value: !GetAtt LoadBalancer.DNSName
+    Export:
+      Name: !Sub "${AWS::StackName}-LoadBalancerDNS"
+  TargetGroup:
+    Description: Target Group
+    Value: !GetAtt LoadBalancerTargetGroup.TargetGroupName 
+    Export:
+     Name: !Sub "${AWS::StackName}-TargetGroup"
+  RDSSecretsARN:
+    Description: RDS Secrets ARN
+    Value: !Ref RDSSecrets
+    Export:
+      Name: !Sub "${AWS::StackName}-RDSSecretsARN"
   StackVPC:
     Description: The ID of the VPC
     Value: !Ref VPCId
