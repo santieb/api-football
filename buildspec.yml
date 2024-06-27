@@ -3,17 +3,25 @@ version: 0.2
 phases:
   install:
     runtime-versions:
-      nodejs: 12
+      nodejs: 16
+    commands:
+      - n 18
   pre_build:
     commands:
-      - echo Installing source NPM dependencies...
+      - echo Installing source NPM dependencies in app/api...
+      - cd app/api
+      - npm install
   build:
     commands:
       - echo Build started on `date`
-      - echo Compiling the Node.js code
+      - echo Building the Docker image...
+      - docker build api
   post_build:
     commands:
+      - echo Running tests...
+      - npm run test
       - echo Build completed on `date`
 artifacts:
   files:
     - '**/*'
+  base-directory: api
