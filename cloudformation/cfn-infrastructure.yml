@@ -140,7 +140,7 @@ Resources:
           DB_USER=$(echo $SECRET_JSON | jq -r '.username')
           DB_PORT=$(echo $SECRET_JSON | jq -r '.port')
 
-          cat <<EOF | sudo tee /home/ec2-user/api-football/.env >/dev/null
+          cat <<EOF | sudo tee /home/ec2-user/api-football/app/.env >/dev/null
           AWS_REGION=${AWS::Region}
           LOG_GROUP_NAME=${AWS::StackName}
           API_PORT=3000
@@ -153,7 +153,7 @@ Resources:
           sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
           sudo chmod +x /usr/local/bin/docker-compose
 
-          cd /home/ec2-user/api-football
+          cd /home/ec2-user/api-football/app
           docker-compose up --build -d
       Tags:
         - Key: owner
@@ -825,12 +825,6 @@ Metadata:
           - OwnerEmail
 
 Outputs:
-  LoadBalancer:
-    Description: The DNS name of LoadBalancer
-    Value: !GetAtt LoadBalancer.DNSName
-  InstanceID:
-    Description: The Instance ID
-    Value: !Ref EC2Instance
   StackVPC:
     Description: The ID of the VPC
     Value: !Ref VPCId
