@@ -15,7 +15,7 @@ phases:
     commands:
       - echo Build started on `date`
       - echo Building the Docker image...
-      - docker build api
+      - docker build .
   post_build:
     commands:
       - echo Running tests...
@@ -24,4 +24,4 @@ phases:
 artifacts:
   files:
     - '**/*'
-  base-directory: api
+  base-directory: app
