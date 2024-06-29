@@ -4,7 +4,7 @@ files:
   - source: /
     destination: /home/ec2-user/myapp
 hooks:
-  BeforeInstall:
-    - location: scripts/before_install.sh
+  AfterInstall:
+    - location: scripts/after_install.sh
       timeout: 300
       runas: root
