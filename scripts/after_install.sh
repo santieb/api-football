@@ -1,8 +1,8 @@
 #!/bin/bash
 
-RDSSecrets="arn:aws:secretsmanager:us-east-1:844045035952:secret:RDSSecrets-ABT04snJhb2x-ccYn5w"
-AWS_REGION="us-east-1"
-StackName="cfn-infrastructure-sbarreto"
+RDSSecrets=""
+AWS_REGION=""
+StackName=""
 
 SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id "${RDSSecrets}" --region "${AWS_REGION}" --query SecretString --output text)
 echo "Secret JSON: $SECRET_JSON"
