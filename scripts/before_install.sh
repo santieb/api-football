@@ -1,22 +1,28 @@
 #!/bin/bash
 
-DB_HOST="test-db.example.com"
-DB_PASSWORD="mysecretpassword"
-DB_DATABASE="testdb"
-DB_USER="testuser"
-DB_PORT="3306"
+RDSSecrets="arn:aws:secretsmanager:us-east-1:844045035952:secret:RDSSecrets-HAMnbY8CbOvZ-Areea9"
+AWS_REGION="us-east-1"
+StackName="cfn-infrastructure-sbarreto"
 
-cat <<EOF | sudo tee /home/ec2-user/myapp/.env >/dev/null
-AWS_REGION=us-east-1
-LOG_GROUP_NAME=myapp-logs
+SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id "${RDSSecrets}" --region "${AWS_REGION}" --query SecretString --output text)
+echo "Secret JSON: $SECRET_JSON"
+
+DB_HOST=$(echo "${SECRET_JSON}" | jq -r '.host')
+DB_PASSWORD=$(echo "${SECRET_JSON}" | jq -r '.password')
+DB_DATABASE=$(echo "${SECRET_JSON}" | jq -r '.dbInstanceIdentifier')
+DB_USER=$(echo "${SECRET_JSON}" | jq -r '.username')
+DB_PORT=$(echo "${SECRET_JSON}" | jq -r '.port')
+
+cat <<EOF | sudo tee /home/ec2-user/myapp/app/.env >/dev/null
+AWS_REGION=${AWS_REGION}
+LOG_GROUP_NAME=${StackName}
 API_PORT=3000
-DB_HOST=$DB_HOST
-DB_PASSWORD=$DB_PASSWORD
-DB_DATABASE=$DB_DATABASE
-DB_USER=$DB_USER
-DB_PORT=$DB_PORT
+DB_HOST=${DB_HOST}
+DB_PASSWORD=${DB_PASSWORD}
+DB_DATABASE=app
+DB_USER=${DB_USER}
+DB_PORT=${DB_PORT}
 EOF
 
-sudo chown ec2-user:ec2-user /home/ec2-user/myapp/.env
-
-echo ".env generado exitosamente."
+cd /home/ec2-user/myapp/app/
+docker-compose up --build -d

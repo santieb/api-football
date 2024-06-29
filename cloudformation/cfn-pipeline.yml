@@ -10,6 +10,16 @@ Parameters:
     Default: '/aws/cloudformation/cfn-elb-lambda-ec2-rds-secrets-cw-sbarreto'
     Description: Log group
 
+  SnsSub:
+    Type: String
+    Default: sample@gmail.com
+    Description: 'sns subcriptor (email)'
+
+  Owneremail:
+    Type: String
+    Default: sample@gmail.com
+    Description: 'The email of the owner for tagging resources'
+
 Resources:
   ArtifactBucket:
     Type: 'AWS::S3::Bucket'
@@ -115,29 +125,49 @@ Resources:
         TargetGroupInfoList:
         - Name: !ImportValue cfn-infrastructure-sbarreto-TargetGroup
 
-  ArtifactBucketPolicy:
-    Type: AWS::S3::BucketPolicy
+  SNSAlertTopic:
+    Type: AWS::SNS::Topic
     Properties:
-      Bucket: !Ref Bucket
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service:
-                - codebuild.amazonaws.com
-                - codedeploy.amazonaws.com
-                - codepipeline.amazonaws.com
-                - codecommit.amazonaws.com
-            Action:
-              - s3:GetObject
-              - s3:PutObject
-              - s3:GetObjectVersion
-              - s3:GetBucketVersioning
-              - s3:ListBucket
-            Resource:
-                  - !GetAtt ArtifactBucket.Arn
-                  - !Sub "${ArtifactBucket.Arn}/*"
+      Subscription:
+        - Endpoint: !Ref SnsSub
+          Protocol: email
+      Tags:
+        - Key: owner
+          Value: !Ref Owneremail
+
+  CodeBuildAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: 'Codebuild failures'
+      MetricName: FailedBuilds
+      Namespace: AWS/CodeBuild
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref SNSAlertTopic
+      Dimensions:
+        - Name: ProjectName
+          Value: !Ref CodeBuildProject
+
+  CodeDeployAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: 'Codedeploy failures'
+      MetricName: FailedDeployments
+      Namespace: AWS/CodeDeploy
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref SNSAlertTopic
+      Dimensions:
+        - Name: ApplicationName
+          Value: !Ref CodeDeployApp
 
   CodeDeployRole:
     Type: 'AWS::IAM::Role'
@@ -184,6 +214,7 @@ Resources:
                   - elasticloadbalancing:DescribeTargetGroups
                   - elasticloadbalancing:DeregisterTargets
                   - elasticloadbalancing:DescribeTargetHealth
+                  - elasticloadbalancing:RegisterTargets
                 Resource: "*"
 
   CodeBuildRole:

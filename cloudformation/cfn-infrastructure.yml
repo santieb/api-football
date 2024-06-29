@@ -95,7 +95,7 @@ Resources:
                   - 'logs:PutLogEvents'
                   - 'logs:GetLogEvents'
                 Resource: !GetAtt LogGroup.Arn
-      # s3 exists in cfn-pipeline-sbarreto
+      # resources exists in cfn-pipeline-sbarreto
         - PolicyName: 'EC2S3Access'
           PolicyDocument:
             Version: '2012-10-17'
@@ -499,15 +499,11 @@ Resources:
 
   MyBucket:
     Type: AWS::S3::Bucket
-    #DependsOn: !Ref MyLambdaFunction
     Properties:
+      BucketName: 'bucket-sbarreto'
       Tags:
         - Key: owner
           Value: !Ref OwnerEmail
-      #NotificationConfiguration:
-      #    LambdaConfigurations:
-      #      - Event: s3:ObjectCreated:Put
-      #        Function: !GetAtt MyLambdaFunction.Arn
 
   LambdaS3Permission:
     Type: AWS::Lambda::Permission

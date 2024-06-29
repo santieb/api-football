@@ -6,6 +6,7 @@ phases:
       nodejs: 16
     commands:
       - n 18
+      - apt-get update && apt-get install -y jq
   pre_build:
     commands:
       - echo Installing source NPM dependencies in app/api...
@@ -14,8 +15,8 @@ phases:
   build:
     commands:
       - echo Build started on `date`
-      - echo Building the Docker image...
-      - docker build .
+      - echo Generating .env file...
+      - ./scripts/generate_env.sh
   post_build:
     commands:
       - echo Running tests...
@@ -24,4 +25,3 @@ phases:
 artifacts:
   files:
     - '**/*'
-  base-directory: app
