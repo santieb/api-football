@@ -96,25 +96,25 @@ Resources:
                   - 'logs:GetLogEvents'
                 Resource: !GetAtt LogGroup.Arn
       # resources exists in cfn-pipeline-sbarreto
-        - PolicyName: 'EC2S3Access'
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:ListBucket
-                Resource:
-                  - arn:aws:s3:::artifacts-bucket-sbarreto
-                  - arn:aws:s3:::artifacts-bucket-sbarreto/*
-        - PolicyName: EC2CodeployAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                - 'codedeploy:*'
-                Resource: "*"
+      #  - PolicyName: 'EC2S3Access'
+      #    PolicyDocument:
+      #      Version: '2012-10-17'
+      #      Statement:
+      #        - Effect: Allow
+      #          Action:
+      #            - s3:GetObject
+      #            - s3:ListBucket
+      #          Resource:
+      #            - arn:aws:s3:::artifacts-bucket-sbarreto
+      #            - arn:aws:s3:::artifacts-bucket-sbarreto/*
+      #  - PolicyName: EC2CodeployAccess
+      #    PolicyDocument:
+      #      Version: '2012-10-17'
+      #      Statement:
+      #        - Effect: Allow
+      #          Action:
+      #          - 'codedeploy:*'
+      #          Resource: "*"
 
       Tags:
         - Key: owner
@@ -128,6 +128,7 @@ Resources:
 
   EC2Instance:
     Type: AWS::EC2::Instance
+    DependsOn: DBInstance
     Properties:
       InstanceType: !FindInMap [EnvironmentToInstanceType, !Ref EnvironmentType, InstanceType]
       ImageId: !Ref AmiID
@@ -497,6 +498,131 @@ Resources:
         - Key: owner
           Value: !Ref OwnerEmail
 
+  StartShutdownInstancesFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Runtime: python3.12
+      Role: !GetAtt 'StartShutdownInstancesFunctionRole.Arn'
+      LoggingConfig: 
+        ApplicationLogLevel: INFO
+        LogFormat: JSON
+        LogGroup: !Sub "/aws/cloudformation/${AWS::StackName}"
+        SystemLogLevel: INFO
+      Environment:
+        Variables:
+          STACK_KEY: aws:cloudformation:stack-name
+          STACK_VALUE: !Ref AWS::StackName
+      Timeout: 15
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+
+          region = "us-east-1"
+          stack_key = os.environ['STACK_KEY']
+          stack_value = os.environ['STACK_VALUE']
+
+
+          def get_ec2_instances_ids():
+              ec2_client = boto3.client("ec2", region_name=region)
+              ec2_instances = ec2_client.describe_instances(
+                  Filters=[
+                      {"Name": f"tag:{stack_key}", "Values": [stack_value]},
+                  ]
+              )
+
+              ec2_instance_ids = []
+              for instance in ec2_instances["Reservations"][0]["Instances"]:
+                  ec2_instance_ids.append(instance["InstanceId"])
+
+              return ec2_instance_ids
+
+
+          def get_rds_instances_ids():
+              rds_client = boto3.client("rds", region_name=region)
+              rds_instances = rds_client.describe_db_instances()
+
+              rds_instance_ids = []
+              for instance in rds_instances["DBInstances"]:
+                  if "Tags" in instance:
+                      for tag in instance["Tags"]:
+                          if tag["Key"] == stack_key and tag["Value"] == stack_value:
+                              rds_instance_ids.append(instance["DBInstanceIdentifier"])
+
+              return rds_instances_ids
+
+
+          def start_shutdown_instances():
+              action = event["action"]
+
+              if action == "start":
+                  ec2.start_instances(InstanceIds=instance_ids)
+                  print(f"Started EC2 instances: {ec2_instance_ids}")
+
+                  for db_instance_id in rds_instance_ids:
+                      rds_client.start_db_instance(DBInstanceIdentifier=db_instance_id)
+                      print(f"Started RDS instance: {db_instance_id}")
+
+              if action == "stop":
+                  ec2.stop_instances(InstanceIds=instance_ids)
+                  print(f"Stopped EC2 instances: {ec2_instance_ids}")
+
+                  for db_instance_id in rds_instance_ids:
+                      rds_client.stop_db_instance(DBInstanceIdentifier=db_instance_id)
+                      print(f"Stopped RDS instance: {db_instance_id}")
+
+
+          def lambda_handler(event, context):
+              start_shutdown_instances(event["action"] = 'stop')
+
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
+  StartShutdownInstancesFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Path: /
+      Policies:
+        - PolicyName: LambdaEC2RDSDescribeInstances
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeInstances
+                  - rds:DescribeDBInstances
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/cloudformation/${AWS::StackName}:*"
+              - Effect: Allow
+                Action:
+                  - ec2:StartInstances
+                  - ec2:StopInstances
+                Resource: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${EC2Instance}"
+              - Effect: Allow
+                Action:
+                  - rds:StartDBInstance
+                  - rds:StopDBInstance
+                Resource: !GetAtt DBInstance.DBInstanceArn
+      Tags:
+        - Key: owner
+          Value: !Ref OwnerEmail
+
   MyBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -619,6 +745,11 @@ Resources:
                 Resource:
                   - !Sub 'arn:aws:s3:::${MyBucket}'
                   - !Sub 'arn:aws:s3:::${MyBucket}/*'
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/cloudformation/${AWS::StackName}:*"
       Tags:
         - Key: owner
           Value: !Ref OwnerEmail
